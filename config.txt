@@ -1,0 +1,31 @@
+# S402 API Configuration
+# Simple configuration file - edit values after the colon
+
+# Environment mode (development or production)
+Environment: development
+
+# Server port number
+Port: 5000
+
+# Blockchain network ID (56 = BNB Chain, 97 = BSC Testnet)
+ChainId: 56
+
+# Your wallet address that will receive payments
+Recipient: 0x0000000000000000000000000000000000000002
+
+# Default price per API call in USD1 tokens (e.g., 0.001 = $0.001)
+Price: 0.001
+
+# Custom pricing for specific endpoints (format: route.key;price route.key2;price)
+# Example: tool.example;0.01 tool.analytics;0.005
+PriceTable: tool.example;0.001 tool.analytics;0.001
+
+# Trust proxy headers (true if behind reverse proxy like nginx/cloudflare)
+TrustProxy: true
+
+# Allowed CORS origins (* for all, or comma-separated URLs)
+AllowedOrigins: *
+
+# Minimum block confirmations required for transaction verification (2-20 recommended)
+# On BNB Chain: 2 confirmations = ~6 seconds, 20 confirmations = ~60 seconds
+MinimumConfirmations: 2
