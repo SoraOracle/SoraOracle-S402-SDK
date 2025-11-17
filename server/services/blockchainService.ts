@@ -71,7 +71,8 @@ export async function verifyTransactionSettlement(
     }
     
     // Parse logs to verify PaymentSettled event with correct parameters
-    const settledEvent = receipt.logs.find((log) => {
+    let matchedEvent = false;
+    for (const log of receipt.logs) {
       try {
         const parsed = contract.interface.parseLog({
           topics: [...log.topics],
@@ -80,25 +81,82 @@ export async function verifyTransactionSettlement(
         
         if (parsed?.name === "PaymentSettled") {
           // Verify event parameters match payment data
-          const matches =
-            parsed.args.from.toLowerCase() === payment.owner.toLowerCase() &&
-            parsed.args.to.toLowerCase() === payment.recipient.toLowerCase() &&
-            parsed.args.value.toString() === payment.value &&
-            parsed.args.nonce === payment.nonce;
+          const fromMatches = parsed.args.from.toLowerCase() === payment.owner.toLowerCase();
+          const toMatches = parsed.args.to.toLowerCase() === payment.recipient.toLowerCase();
+          const nonceMatches = parsed.args.nonce === payment.nonce;
+          const value = BigInt(parsed.args.value.toString());
+          const platformFee = parsed.args.platformFee
+            ? BigInt(parsed.args.platformFee.toString())
+            : 0n;
+          const totalSettled = value + platformFee;
+          const expectedValue = BigInt(payment.value);
+          const valueMatches = value === expectedValue || totalSettled === expectedValue;
           
-          return matches;
+          if (fromMatches && toMatches && nonceMatches && valueMatches) {
+            matchedEvent = true;
+            break;
+          }
         }
       } catch (e) {
         // Ignore parsing errors for non-contract logs
       }
-      return false;
-    });
+    }
     
-    if (!settledEvent) {
-      logger.warn({
+    if (matchedEvent) {
+      logger.info({
         txHash,
-        payment,
-      }, "No matching PaymentSettled event found in transaction");
+        confirmations,
+        owner: payment.owner,
+        recipient: payment.recipient,
+        value: payment.value,
+      }, "Transaction verified successfully via PaymentSettled event");
+      return { verified: true, confirmations };
+    }
+    
+    logger.warn({ txHash }, "No PaymentSettled event found, verifying via calldata");
+    
+    // Fall back to decoding calldata to validate payment parameters
+    const tx = await provider.getTransaction(txHash);
+    if (!tx) {
+      logger.error({ txHash }, "Unable to fetch transaction data for settlement verification");
+      return { verified: false, confirmations, error: "Transaction data unavailable" };
+    }
+    
+    let parsedTx;
+    try {
+      parsedTx = contract.interface.parseTransaction({
+        data: tx.data,
+        value: tx.value,
+      });
+    } catch (error) {
+      logger.error({ txHash, error }, "Failed to parse transaction calldata");
+      return { verified: false, confirmations, error: "Unable to parse transaction calldata" };
+    }
+    
+    if (!parsedTx || !["settlePayment", "settlePaymentWithPermit"].includes(parsedTx.name)) {
+      logger.warn({ txHash }, "Transaction did not call a settlement function");
+      return { verified: false, confirmations, error: "Unexpected function call" };
+    }
+    
+    const txPayment = parsedTx.args?.payment ?? parsedTx.args?.[0];
+    if (!txPayment) {
+      logger.error({ txHash }, "Parsed transaction missing payment args");
+      return { verified: false, confirmations, error: "Missing payment arguments" };
+    }
+    
+    const calldataMatches = {
+      owner: txPayment.owner?.toLowerCase() === payment.owner.toLowerCase(),
+      recipient: txPayment.recipient?.toLowerCase() === payment.recipient.toLowerCase(),
+      value: txPayment.value?.toString() === payment.value,
+      deadline: txPayment.deadline?.toString() === payment.deadline.toString(),
+      nonce: txPayment.nonce === payment.nonce,
+      signer: tx.from?.toLowerCase() === payment.owner.toLowerCase(),
+    };
+    
+    const allMatches = Object.values(calldataMatches).every(Boolean);
+    
+    if (!allMatches) {
+      logger.warn({ txHash }, "Transaction calldata does not match expected payment");
       return { verified: false, confirmations, error: "Payment parameters mismatch" };
     }
     
@@ -108,7 +166,8 @@ export async function verifyTransactionSettlement(
       owner: payment.owner,
       recipient: payment.recipient,
       value: payment.value,
-    }, "Transaction verified successfully");
+      verifiedVia: "calldata",
+    }, "Transaction verified successfully via calldata inspection");
     
     return { verified: true, confirmations };
   } catch (error) {

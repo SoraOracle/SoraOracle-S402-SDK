@@ -17,7 +17,7 @@ export function getFacilitatorContract(): ethers.Contract {
   if (!facilitatorContract) {
     facilitatorContract = new ethers.Contract(
       S402_FACILITATOR,
-      S402FacilitatorABI,
+      S402FacilitatorABI.abi,
       getProvider()
     );
   }

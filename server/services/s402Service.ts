@@ -1,3 +1,4 @@
+import { ethers } from "ethers";
 import { generateNonce } from "../utils/crypto";
 import { getChainId, S402_FACILITATOR } from "../config/env";
 import { verifyTransactionSettlement } from "./blockchainService";
@@ -72,7 +73,6 @@ export function buildPaymentRequest(params: PaymentRequestParams): PaymentReques
 export function computePaymentHash(payment: PaymentData): string {
   // This is a simplified client-side hash for reference
   // The canonical hash is computed by the smart contract
-  const { ethers } = require("ethers");
   return ethers.keccak256(
     ethers.solidityPacked(
       ["address", "uint256", "uint256", "address", "bytes32"],
@@ -190,8 +190,6 @@ export function verifyEIP712Signature(
   domain: EIP712Domain
 ): boolean {
   try {
-    const { ethers } = require("ethers");
-    
     // Use shared types from schema to avoid drift
     const types = { PaymentAuthorization: PAYMENT_AUTHORIZATION_TYPES.PaymentAuthorization };
     
